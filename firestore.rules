@@ -9,7 +9,8 @@ service cloud.firestore {
     }
     match /reports/{reportId} {
       allow read, write: if companyUser();
-      match /photos/{photoId} {
+      // photos, renders, and anything else stored under a report
+      match /{sub}/{docId} {
         allow read, write: if companyUser();
       }
     }
