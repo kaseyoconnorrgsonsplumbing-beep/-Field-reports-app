@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { watchAuth, signIn, logOut, isAllowedUser, ALLOWED_DOMAIN } from './firebase';
+import { watchAuth, signIn, resetPassword, logOut, isAllowedUser, ALLOWED_DOMAIN } from './firebase';
 import ReportsList from './components/ReportsList';
 import ReportEditor from './components/ReportEditor';
 
@@ -23,24 +23,7 @@ export default function App() {
   if (user === undefined) return <div className="page" style={{ textAlign: 'center', paddingTop: 80 }}>Loading…</div>;
 
   if (!user || !isAllowedUser(user)) {
-    return (
-      <div className="signin">
-        <div className="card">
-          <img src="/icon-192.png" alt="RG & Sons" />
-          <h1>Field Reports</h1>
-          <p>RG &amp; Sons Plumbing, Inc.</p>
-          {user && !isAllowedUser(user) && (
-            <p style={{ color: '#b42318' }}>
-              {user.email} isn't a @{ALLOWED_DOMAIN} account.{' '}
-              <button className="btn btn-sm btn-ghost" onClick={logOut}>Sign out</button>
-            </p>
-          )}
-          <button className="btn btn-primary btn-block" onClick={() => signIn().catch((e) => notify(e.message, true))}>
-            Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
+    return <SignIn user={user} notify={notify} />;
   }
 
   return (
@@ -58,4 +41,67 @@ export default function App() {
 function parseHash() {
   const m = location.hash.match(/^#\/r\/([\w-]+)/);
   return { id: m ? m[1] : null };
+}
+
+const FRIENDLY = {
+  'auth/invalid-credential': 'Wrong email or password.',
+  'auth/wrong-password': 'Wrong email or password.',
+  'auth/user-not-found': 'No account with that email. Ask the office to add you.',
+  'auth/invalid-email': 'That email address doesn\'t look right.',
+  'auth/too-many-requests': 'Too many attempts — wait a minute and try again.',
+  'auth/network-request-failed': 'No connection. Check your signal and try again.',
+};
+
+function SignIn({ user, notify }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await signIn(email, password);
+    } catch (err) {
+      notify(FRIENDLY[err.code] || err.message, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function forgot() {
+    if (!email.trim()) return notify('Type your email first, then tap Forgot password.', true);
+    try {
+      await resetPassword(email);
+      notify('Reset link sent — check your email.');
+    } catch (err) {
+      notify(FRIENDLY[err.code] || err.message, true);
+    }
+  }
+
+  return (
+    <div className="signin">
+      <form className="card" onSubmit={submit}>
+        <img src="/icon-192.png" alt="RG & Sons" />
+        <h1>Field Reports</h1>
+        <p>RG &amp; Sons Plumbing, Inc.</p>
+        {user && !isAllowedUser(user) && (
+          <p style={{ color: '#b42318' }}>
+            {user.email} isn't a @{ALLOWED_DOMAIN} account.{' '}
+            <button type="button" className="btn btn-sm btn-ghost" onClick={logOut}>Sign out</button>
+          </p>
+        )}
+        <div className="field" style={{ textAlign: 'left' }}>
+          <label>Email</label>
+          <input type="email" autoComplete="username" inputMode="email" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={'you@' + ALLOWED_DOMAIN} required />
+        </div>
+        <div className="field" style={{ textAlign: 'left' }}>
+          <label>Password</label>
+          <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        </div>
+        <button type="submit" className="btn btn-primary btn-block" disabled={busy}>{busy ? <span className="spinner" /> : 'Sign in'}</button>
+        <button type="button" className="btn-danger-text" style={{ color: 'var(--gray)', marginTop: 10 }} onClick={forgot}>Forgot password?</button>
+      </form>
+    </div>
+  );
 }
