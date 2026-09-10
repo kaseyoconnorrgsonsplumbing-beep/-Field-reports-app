@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import {
   initializeFirestore,
   persistentLocalCache,
@@ -36,18 +36,12 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
 });
 
-const provider = new GoogleAuthProvider();
-provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account' });
-
-export async function signIn() {
-  try {
-    await signInWithPopup(auth, provider);
-  } catch (e) {
-    // Some mobile browsers block popups; fall back to redirect.
-    if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
-      await signInWithRedirect(auth, provider);
-    } else throw e;
-  }
+export async function signIn(email, password) {
+  await setPersistence(auth, browserLocalPersistence); // stay signed in on the phone
+  await signInWithEmailAndPassword(auth, email.trim(), password);
+}
+export async function resetPassword(email) {
+  await sendPasswordResetEmail(auth, email.trim());
 }
 export const logOut = () => signOut(auth);
 export const watchAuth = (cb) => onAuthStateChanged(auth, cb);
