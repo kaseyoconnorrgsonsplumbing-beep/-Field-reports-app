@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { loadImage, uid } from '../imageUtils';
+import { loadImage, uid, canvasToJpeg } from '../imageUtils';
 
 /**
  * Full-screen photo markup editor.
@@ -430,7 +430,7 @@ export default function PhotoEditor({ photo, onSave, onCancel }) {
       ctx.translate(-r.x, -r.y);
       ctx.drawImage(img, 0, 0);
       drawItems(ctx, items, {});
-      const annotated = out.toDataURL('image/jpeg', 0.85);
+      const annotated = canvasToJpeg(out);
       await onSave({ annotated, annotations: items, crop });
     } finally {
       setSaving(false);
