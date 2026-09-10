@@ -91,41 +91,66 @@ export async function saveReport(id, data) {
 }
 
 export async function deleteReport(id) {
-  const photos = await getDocs(collection(db, 'reports', id, 'photos'));
-  await Promise.all(photos.docs.map((p) => deleteDoc(p.ref)));
+  for (const sub of ['photos', 'renders']) {
+    const snap = await getDocs(collection(db, 'reports', id, sub));
+    await Promise.all(snap.docs.map((p) => deleteDoc(p.ref)));
+  }
   await deleteDoc(doc(db, 'reports', id));
 }
 
-// ---------- Photos (stored as compressed JPEG data URLs so offline capture works) ----------
+// ---------- Photos ----------
+// Stored as compressed JPEG data URLs so offline capture works with no extra
+// setup. Firestore caps a document at 1 MB, so the original lives in
+// reports/{id}/photos/{pid} and the marked-up render in reports/{id}/renders/{pid}.
+const photosCol = (reportId) => collection(db, 'reports', reportId, 'photos');
+const rendersCol = (reportId) => collection(db, 'reports', reportId, 'renders');
+
 export function watchPhotos(reportId, cb) {
-  const q = query(collection(db, 'reports', reportId, 'photos'), orderBy('createdAt', 'asc'));
-  return onSnapshot(q, (snap) => {
+  let photos = {};
+  let renders = {};
+  const emit = () => {
     const map = {};
-    snap.docs.forEach((d) => (map[d.id] = { id: d.id, ...d.data() }));
+    Object.values(photos).forEach((p) => (map[p.id] = { ...p, annotated: renders[p.id]?.annotated || null }));
     cb(map);
+  };
+  const u1 = onSnapshot(query(photosCol(reportId), orderBy('createdAt', 'asc')), (snap) => {
+    photos = {};
+    snap.docs.forEach((d) => (photos[d.id] = { id: d.id, ...d.data() }));
+    emit();
   });
+  const u2 = onSnapshot(rendersCol(reportId), (snap) => {
+    renders = {};
+    snap.docs.forEach((d) => (renders[d.id] = d.data()));
+    emit();
+  });
+  return () => {
+    u1();
+    u2();
+  };
 }
 
-export async function addPhoto(reportId, photo) {
-  const ref = await addDoc(collection(db, 'reports', reportId, 'photos'), {
-    ...photo,
-    createdAt: Date.now(),
-  });
+export async function addPhoto(reportId, { original, annotated, annotations = [], crop = null }) {
+  const ref = await addDoc(photosCol(reportId), { original, annotations, crop, createdAt: Date.now() });
+  if (annotated) await setDoc(doc(rendersCol(reportId), ref.id), { annotated, updatedAt: Date.now() });
   return ref.id;
 }
 
-export async function updatePhoto(reportId, photoId, data) {
-  await setDoc(doc(db, 'reports', reportId, 'photos', photoId), data, { merge: true });
+export async function updatePhoto(reportId, photoId, { annotated, annotations, crop }) {
+  await setDoc(doc(photosCol(reportId), photoId), { annotations: annotations || [], crop: crop || null }, { merge: true });
+  if (annotated) await setDoc(doc(rendersCol(reportId), photoId), { annotated, updatedAt: Date.now() });
 }
 
 export async function removePhoto(reportId, photoId) {
-  await deleteDoc(doc(db, 'reports', reportId, 'photos', photoId));
+  await deleteDoc(doc(rendersCol(reportId), photoId)).catch(() => {});
+  await deleteDoc(doc(photosCol(reportId), photoId));
 }
 
 export async function getPhotosOnce(reportId) {
-  const snap = await getDocs(collection(db, 'reports', reportId, 'photos'));
+  const [ps, rs] = await Promise.all([getDocs(photosCol(reportId)), getDocs(rendersCol(reportId))]);
+  const renders = {};
+  rs.docs.forEach((d) => (renders[d.id] = d.data()));
   const map = {};
-  snap.docs.forEach((d) => (map[d.id] = { id: d.id, ...d.data() }));
+  ps.docs.forEach((d) => (map[d.id] = { id: d.id, ...d.data(), annotated: renders[d.id]?.annotated || null }));
   return map;
 }
 
