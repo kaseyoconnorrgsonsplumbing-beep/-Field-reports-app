@@ -41,6 +41,8 @@ async function callClaude({ system, user, maxTokens = 2000, json = false }) {
       'content-type': 'application/json',
       'x-api-key': process.env.ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
+      // Only needed for a "Personal" key; workspace-scoped keys ignore it.
+      ...(process.env.ANTHROPIC_WORKSPACE_ID ? { 'anthropic-workspace-id': process.env.ANTHROPIC_WORKSPACE_ID.trim() } : {}),
     },
     body: JSON.stringify({
       model: MODEL,
