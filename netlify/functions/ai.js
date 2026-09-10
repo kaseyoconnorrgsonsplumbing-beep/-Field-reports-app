@@ -5,8 +5,10 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
+const MODEL = (process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5').trim();
+// Firebase project id: FIREBASE_PROJECT_ID, or fall back to the public VITE_ one so a
+// missing/typo'd variable doesn't break sign-in verification.
+const PROJECT_ID = (process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || '').trim();
 const ALLOWED_DOMAIN = (process.env.ALLOWED_DOMAIN || 'rgsonsplumbing.com').toLowerCase();
 
 const JWKS = createRemoteJWKSet(
@@ -64,6 +66,7 @@ async function callClaude({ system, user, maxTokens = 2000, json = false }) {
 export default async (req) => {
   if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
   if (!process.env.ANTHROPIC_API_KEY) return json({ error: 'ANTHROPIC_API_KEY is not set on the server' }, 500);
+  if (!PROJECT_ID) return json({ error: 'FIREBASE_PROJECT_ID is not set on the server' }, 500);
 
   try {
     await verifyUser(req);
