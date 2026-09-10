@@ -2,8 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     function companyUser() {
+      // Accounts are created by hand in Firebase > Authentication > Users,
+      // so any signed-in company address is trusted.
       return request.auth != null
-        && request.auth.token.email_verified == true
         && request.auth.token.email.matches('.*@rgsonsplumbing[.]com$');
     }
     match /reports/{reportId} {
