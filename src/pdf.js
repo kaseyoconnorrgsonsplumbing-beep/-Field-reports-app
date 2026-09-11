@@ -82,24 +82,39 @@ export async function buildReportPdf(report, photos) {
     ['Prepared by', report.preparedBy],
     ['Report #', report.reportNumber || report.id?.slice(0, 8).toUpperCase()],
   ].filter(([, v]) => v);
+  // two columns, but a long value (e.g. contact with phone + email) takes a full row
   const colW = W / 2;
-  doc.setFontSize(9.5);
   const rowH = 14;
-  ensure(Math.ceil(info.length / 2) * rowH + 10);
-  info.forEach(([k, v], i) => {
-    const col = i % 2;
-    const row = Math.floor(i / 2);
+  const labelW = 72;
+  doc.setFontSize(9.5);
+  doc.setFont('helvetica', 'normal');
+  let col = 0;
+  for (const [k, v] of info) {
+    const val = String(v);
+    const fitsHalf = doc.getTextWidth(val) <= colW - labelW - 8;
+    if (!fitsHalf && col === 1) {
+      y += rowH;
+      col = 0;
+    }
+    ensure(rowH);
     const x = LEFT + col * colW;
-    const yy = y + row * rowH + 9;
+    const yy = y + 9;
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...GRAY);
     doc.text(k.toUpperCase(), x, yy);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...BLACK);
-    const val = doc.splitTextToSize(String(v), colW - 80)[0];
-    doc.text(val, x + 72, yy);
-  });
-  y += Math.ceil(info.length / 2) * rowH + 12;
+    const maxW = fitsHalf ? colW - labelW - 8 : W - labelW;
+    doc.text(doc.splitTextToSize(val, maxW)[0], x + labelW, yy);
+    if (fitsHalf && col === 0) {
+      col = 1;
+    } else {
+      col = 0;
+      y += rowH;
+    }
+  }
+  if (col === 1) y += rowH;
+  y += 12;
 
   // ---------- Summary ----------
   if (report.summary) {
@@ -107,29 +122,46 @@ export async function buildReportPdf(report, photos) {
     text(report.summary, { gap: 10 });
   }
 
-  // ---------- Issues at a glance (cover page) ----------
+  // ---------- Contents (cover page) ----------
+  // Page numbers are filled in after layout, once we know where everything landed.
   const issues = report.issues || [];
+  const toc = []; // { y, page: filled later }
+  const priced = issues.filter((it) => it.price !== '' && it.price != null && !isNaN(Number(it.price)));
+  const hasPhotos = issues.some((it) => (it.photoIds || []).some((id) => photos[id]?.annotated || photos[id]?.original));
   if (issues.length) {
-    label(`ISSUES FOUND (${issues.length})`);
+    label('CONTENTS');
     y += 2;
-    doc.setFontSize(10);
-    issues.forEach((it, n) => {
+    // column headers
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...GRAY);
+    doc.text('ISSUE', LEFT + 6, y + 9);
+    doc.text('PRICE', RIGHT - 70, y + 9, { align: 'right' });
+    doc.text('PAGE', RIGHT - 6, y + 9, { align: 'right' });
+    y += 14;
+    const tocRow = (labelText, priceText, key, shade) => {
       ensure(16);
-      if (n % 2 === 0) {
+      if (shade) {
         doc.setFillColor(243, 245, 249);
         doc.rect(LEFT, y, W, 16, 'F');
       }
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
       doc.setTextColor(...BLACK);
-      doc.text(doc.splitTextToSize(`${n + 1}.  ${it.title || it.location || 'Issue'}`, W - 100)[0], LEFT + 6, y + 11);
-      if (it.price !== '' && it.price != null && !isNaN(Number(it.price))) {
-        doc.text(money(it.price), RIGHT - 6, y + 11, { align: 'right' });
-      }
+      doc.text(doc.splitTextToSize(labelText, W - 150)[0], LEFT + 6, y + 11);
+      if (priceText) doc.text(priceText, RIGHT - 70, y + 11, { align: 'right' });
+      toc.push({ key, y: y + 11 });
       y += 16;
+    };
+    issues.forEach((it, n) => {
+      const price = it.price !== '' && it.price != null && !isNaN(Number(it.price)) ? money(it.price) : '';
+      tocRow(`${n + 1}.  ${it.title || it.location || 'Issue'}`, price, `issue${n}`, n % 2 === 0);
     });
-    y += 4;
-    text('Each issue is detailed on its own page, followed by a pricing summary and full-size reference photos.', { size: 9.5, color: GRAY, gap: 6 });
+    if (priced.length) tocRow('Pricing summary & terms', '', 'pricing', issues.length % 2 === 0);
+    if (hasPhotos) tocRow('Photo reference (full-size photos)', '', 'photos', (issues.length + 1) % 2 === 0);
+    y += 8;
   }
+  const pageOf = {}; // key -> page number
 
   // Global photo numbering (Photo 1, Photo 2, ...) shared by the sections and the appendix
   const photoIndex = new Map();
@@ -147,6 +179,7 @@ export async function buildReportPdf(report, photos) {
     const it = issues[n];
     const heading = `${n + 1}.  ${it.title || it.location || 'Issue'}`;
     newPage(); // every issue starts on a fresh page so the client can flip through
+    pageOf[`issue${n}`] = doc.getNumberOfPages();
     // heading bar
     doc.setFillColor(...RED);
     doc.rect(LEFT, y, 4, 18, 'F');
@@ -221,9 +254,9 @@ export async function buildReportPdf(report, photos) {
   }
 
   // ---------- Pricing summary ----------
-  const priced = issues.filter((it) => it.price !== '' && it.price != null && !isNaN(Number(it.price)));
   if (priced.length) {
     newPage();
+    pageOf.pricing = doc.getNumberOfPages();
     label('PRICING SUMMARY');
     y += 2;
     doc.setFontSize(10);
@@ -266,6 +299,7 @@ export async function buildReportPdf(report, photos) {
       const { id, issueNo, issueTitle } = photoOrder[k];
       newPage();
       if (k === 0) {
+        pageOf.photos = doc.getNumberOfPages();
         label('PHOTO REFERENCE');
         text('Full-size copies of the marked-up photos from each issue, for closer review.', { size: 9.5, color: GRAY, gap: 8 });
       }
@@ -286,6 +320,17 @@ export async function buildReportPdf(report, photos) {
       doc.setTextColor(...NAVY);
       doc.text(`Photo ${k + 1}  ·  Issue ${issueNo}: ${issueTitle}`, LEFT, y);
     }
+  }
+
+  // fill in the contents page numbers on the cover
+  if (toc.length) {
+    doc.setPage(1);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(...NAVY);
+    toc.forEach((row) => {
+      if (pageOf[row.key]) doc.text(String(pageOf[row.key]), RIGHT - 6, row.y, { align: 'right' });
+    });
   }
 
   // page numbers
