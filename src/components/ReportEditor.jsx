@@ -3,6 +3,7 @@ import { watchReport, saveReport, watchPhotos, addPhoto, updatePhoto, removePhot
 import { fileToDataUrl, uid, money, orderedIssues, priorityInfo } from '../imageUtils';
 import { generateReport, polishText } from '../ai';
 import { buildReportPdf, pdfFileName } from '../pdf';
+import { emailSubject, emailBody, mailtoLink, DEFAULT_CC } from '../email';
 import IssueCard from './IssueCard';
 import PhotoEditor from './PhotoEditor';
 import Dictate from './Dictate';
@@ -174,7 +175,7 @@ export default function ReportEditor({ id, user, notify, onBack }) {
       if (mode === 'share' && navigator.canShare) {
         const file = new File([doc.output('blob')], name, { type: 'application/pdf' });
         if (navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: name });
+          await navigator.share({ files: [file], title: emailSubject(latest.current), text: emailBody(latest.current) });
           return;
         }
       }
@@ -187,6 +188,48 @@ export default function ReportEditor({ id, user, notify, onBack }) {
       if (e.name !== 'AbortError') notify('PDF failed: ' + e.message, true);
     } finally {
       setBusy(null);
+    }
+  }
+
+  // ---- Email: prefill To / CC / subject / body in the mail app, and hand over the PDF
+  async function emailReport() {
+    const to = (report.contactEmail || '').trim();
+    if (!to) return notify('Enter the customer\'s email address first', true);
+    setBusy('email');
+    try {
+      await flush();
+      const cc = report.ccEmail === undefined ? DEFAULT_CC : report.ccEmail;
+      const doc = await buildReportPdf({ ...latest.current, id }, photos);
+      const name = pdfFileName(latest.current);
+      const file = new File([doc.output('blob')], name, { type: 'application/pdf' });
+      const link = mailtoLink(latest.current, { to, cc });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        // phone: share sheet -> Mail gets the PDF + subject + body; user picks the recipient there
+        try {
+          await navigator.share({ files: [file], title: emailSubject(latest.current), text: emailBody(latest.current) });
+          notify(`Sent to your mail app. Add ${to}${cc ? ' and cc ' + cc : ''} in the To/CC fields.`);
+          return;
+        } catch (e) {
+          if (e.name === 'AbortError') return;
+        }
+      }
+      // desktop: download the PDF, then open a prefilled email
+      doc.save(name);
+      setTimeout(() => { window.location.href = link; }, 400);
+      notify('PDF downloaded — attach it to the email that just opened');
+    } catch (e) {
+      notify('Email failed: ' + e.message, true);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function copyEmailText() {
+    try {
+      await navigator.clipboard.writeText(`Subject: ${emailSubject(report)}\n\n${emailBody(report)}`);
+      notify('Email text copied');
+    } catch {
+      notify('Could not copy — your browser blocked clipboard access', true);
     }
   }
 
@@ -308,9 +351,32 @@ export default function ReportEditor({ id, user, notify, onBack }) {
           <div className="row">
             <button className="btn btn-green grow" onClick={() => exportPdf('download')} disabled={busy === 'pdf'}>{busy === 'pdf' ? <span className="spinner" /> : '⬇ Download PDF'}</button>
             <button className="btn grow" onClick={() => exportPdf('view')} disabled={busy === 'pdf'}>👁 Preview</button>
-            {canShare && <button className="btn grow" onClick={() => exportPdf('share')} disabled={busy === 'pdf'}>↗ Share / Email</button>}
+            {canShare && <button className="btn grow" onClick={() => exportPdf('share')} disabled={busy === 'pdf'}>↗ Share PDF</button>}
           </div>
           <p className="hint">Generated on the RG &amp; Sons letterhead with your marked-up photos, findings, and pricing summary.</p>
+        </div>
+
+        <div className="card">
+          <h2>Email the report</h2>
+          <div className="grid2">
+            <div className="field">
+              <label>Customer email (To)</label>
+              <input type="email" inputMode="email" autoCapitalize="none" value={report.contactEmail || ''} onChange={(e) => update({ contactEmail: e.target.value })} placeholder="customer@example.com" />
+            </div>
+            <div className="field">
+              <label>CC</label>
+              <input type="email" inputMode="email" autoCapitalize="none" value={report.ccEmail === undefined ? DEFAULT_CC : report.ccEmail} onChange={(e) => update({ ccEmail: e.target.value })} />
+            </div>
+          </div>
+          <button className="btn btn-primary btn-block" onClick={emailReport} disabled={busy === 'email' || !issues.length}>
+            {busy === 'email' ? <><span className="spinner" /> Preparing…</> : '✉️ Send report by email'}
+          </button>
+          <p className="hint">
+            Opens your mail app with the To, CC, subject, and a summary + pricing list filled in (no signature — your mail app adds yours). Email links can't attach files, so the PDF is downloaded alongside on desktop; on a phone it goes through the share sheet to Mail with the PDF already attached — just add the address there.
+          </p>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn btn-sm btn-ghost" onClick={copyEmailText}>Copy email text</button>
+          </div>
         </div>
       </div>
 
