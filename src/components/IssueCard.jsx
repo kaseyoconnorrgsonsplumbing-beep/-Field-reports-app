@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Dictate from './Dictate';
 import { polishText } from '../ai';
+import { PRIORITIES } from '../imageUtils';
 
 /**
  * One issue: location, voice/typed notes, photos, AI-written finding +
@@ -39,6 +40,25 @@ export default function IssueCard({ index, issue, photos, onChange, onRemove, on
           onChange={(e) => set({ title: e.target.value })}
         />
         <button className="btn-danger-text" onClick={onRemove}>Remove</button>
+      </div>
+
+      <div className="field">
+        <label>Priority</label>
+        <div className="prio-row">
+          {PRIORITIES.map((p) => (
+            <button
+              type="button"
+              key={p.key}
+              className={`prio ${issue.priority === p.key ? 'on' : ''}`}
+              style={issue.priority === p.key ? { background: p.color, borderColor: p.color, color: '#fff' } : { color: p.color, borderColor: p.color }}
+              onClick={() => set({ priority: issue.priority === p.key ? '' : p.key })}
+              title={p.hint}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <p className="hint" style={{ marginTop: 6 }}>Urgent = leak, safety or code issue. Recommended = fix soon. Monitor = watch it / plan for it. AI can suggest one.</p>
       </div>
 
       <div className="field">
