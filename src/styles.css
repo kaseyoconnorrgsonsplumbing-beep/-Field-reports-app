@@ -111,3 +111,10 @@ textarea { resize: vertical; }
 .color-dots { display: flex; gap: 8px; margin-bottom: 12px; }
 .color-dots button { width: 30px; height: 30px; border-radius: 50%; border: 3px solid transparent; }
 .color-dots button.on { border-color: #1c1f2a; }
+
+/* priority picker */
+.prio-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.prio { border: 2px solid; background: #fff; border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 13px; }
+.prio-badge { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .06em; color: #fff; border-radius: 6px; padding: 2px 7px; margin-left: 8px; vertical-align: middle; }
+.toggle { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.toggle input { width: 20px; height: 20px; }
