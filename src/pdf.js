@@ -107,11 +107,28 @@ export async function buildReportPdf(report, photos) {
     text(report.summary, { gap: 10 });
   }
 
-  // ---------- Issues ----------
+  // ---------- Issues at a glance (cover page) ----------
   const issues = report.issues || [];
   if (issues.length) {
     label(`ISSUES FOUND (${issues.length})`);
+    y += 2;
+    doc.setFontSize(10);
+    issues.forEach((it, n) => {
+      ensure(16);
+      if (n % 2 === 0) {
+        doc.setFillColor(243, 245, 249);
+        doc.rect(LEFT, y, W, 16, 'F');
+      }
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...BLACK);
+      doc.text(doc.splitTextToSize(`${n + 1}.  ${it.title || it.location || 'Issue'}`, W - 100)[0], LEFT + 6, y + 11);
+      if (it.price !== '' && it.price != null && !isNaN(Number(it.price))) {
+        doc.text(money(it.price), RIGHT - 6, y + 11, { align: 'right' });
+      }
+      y += 16;
+    });
     y += 4;
+    text('Each issue is detailed on its own page, followed by a pricing summary and full-size reference photos.', { size: 9.5, color: GRAY, gap: 6 });
   }
 
   // Global photo numbering (Photo 1, Photo 2, ...) shared by the sections and the appendix
@@ -129,7 +146,7 @@ export async function buildReportPdf(report, photos) {
   for (let n = 0; n < issues.length; n++) {
     const it = issues[n];
     const heading = `${n + 1}.  ${it.title || it.location || 'Issue'}`;
-    ensure(60);
+    newPage(); // every issue starts on a fresh page so the client can flip through
     // heading bar
     doc.setFillColor(...RED);
     doc.rect(LEFT, y, 4, 18, 'F');
@@ -206,7 +223,7 @@ export async function buildReportPdf(report, photos) {
   // ---------- Pricing summary ----------
   const priced = issues.filter((it) => it.price !== '' && it.price != null && !isNaN(Number(it.price)));
   if (priced.length) {
-    ensure(40 + priced.length * 16 + 30);
+    newPage();
     label('PRICING SUMMARY');
     y += 2;
     doc.setFontSize(10);
