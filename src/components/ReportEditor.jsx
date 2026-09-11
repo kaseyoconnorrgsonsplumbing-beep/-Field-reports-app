@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { watchReport, saveReport, watchPhotos, addPhoto, updatePhoto, removePhoto } from '../firebase';
-import { fileToDataUrl, uid, money } from '../imageUtils';
+import { fileToDataUrl, uid, money, orderedIssues, priorityInfo } from '../imageUtils';
 import { generateReport, polishText } from '../ai';
 import { buildReportPdf, pdfFileName } from '../pdf';
 import IssueCard from './IssueCard';
@@ -141,7 +141,7 @@ export default function ReportEditor({ id, user, notify, onBack }) {
         closing: report.closing || DEFAULT_CLOSING,
         issues: issues.map((i) => {
           const g = byId[i.id];
-          return g ? { ...i, title: g.title || i.title, finding: g.finding || i.finding, recommendation: g.recommendation || i.recommendation } : i;
+          return g ? { ...i, title: g.title || i.title, finding: g.finding || i.finding, recommendation: g.recommendation || i.recommendation, priority: i.priority || g.priority || '' } : i;
         }),
       });
       notify('Report text generated — review and edit anything below');
@@ -283,13 +283,23 @@ export default function ReportEditor({ id, user, notify, onBack }) {
         </div>
 
         <div className="card">
-          <h2>Pricing</h2>
-          {issues.map((i, n) => (
-            <div className="row" key={i.id} style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--line)' }}>
-              <span>{n + 1}. {i.title || i.location || 'Issue'}</span>
-              <strong>{i.price !== '' && i.price != null ? money(i.price) : '—'}</strong>
-            </div>
-          ))}
+          <h2>Report order & pricing</h2>
+          <label className="toggle" style={{ marginBottom: 12 }}>
+            <input type="checkbox" checked={report.sortByPriority !== false} onChange={(e) => update({ sortByPriority: e.target.checked })} />
+            Order issues by priority in the report (Urgent first)
+          </label>
+          {orderedIssues(report).map((i, n) => {
+            const pr = priorityInfo(i.priority);
+            return (
+              <div className="row" key={i.id} style={{ justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid var(--line)' }}>
+                <span>
+                  {n + 1}. {i.title || i.location || 'Issue'}
+                  {pr && <span className="prio-badge" style={{ background: pr.color }}>{pr.short}</span>}
+                </span>
+                <strong>{i.price !== '' && i.price != null ? money(i.price) : '—'}</strong>
+              </div>
+            );
+          })}
           <div className="total" style={{ marginTop: 8 }}><span>Total</span><span>{money(total)}</span></div>
         </div>
 
