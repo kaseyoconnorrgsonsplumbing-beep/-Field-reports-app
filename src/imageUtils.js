@@ -62,3 +62,21 @@ export function money(n) {
   const v = Number(n) || 0;
   return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
+
+// Issue priority levels, in report order.
+export const PRIORITIES = [
+  { key: 'urgent', label: 'Urgent', short: 'URGENT', hint: 'Active leak, safety or code issue, or damage will get worse quickly', color: '#b42318' },
+  { key: 'recommended', label: 'Recommended', short: 'RECOMMENDED', hint: 'Should be repaired soon', color: '#b7791f' },
+  { key: 'monitor', label: 'Monitor', short: 'MONITOR', hint: 'Not urgent - keep an eye on it or plan for it', color: '#1f7a4d' },
+];
+export const priorityRank = (key) => {
+  const i = PRIORITIES.findIndex((p) => p.key === key);
+  return i === -1 ? PRIORITIES.length : i; // unset sorts last
+};
+export const priorityInfo = (key) => PRIORITIES.find((p) => p.key === key) || null;
+/** Issues in report order: by priority (stable) when the report asks for it, else capture order. */
+export function orderedIssues(report) {
+  const issues = report?.issues || [];
+  if (report?.sortByPriority === false) return issues;
+  return issues.map((it, i) => ({ it, i })).sort((a, b) => priorityRank(a.it.priority) - priorityRank(b.it.priority) || a.i - b.i).map((x) => x.it);
+}
