@@ -118,13 +118,14 @@ For EACH issue write:
 - "title": short label, 3-8 words, e.g. "Leaking P-Trap – Master Bathroom"
 - "finding": 1-3 sentences describing what was observed and why it matters (consequence if left alone), based only on the notes.
 - "recommendation": 1-3 sentences describing the recommended repair/solution in plain language. Do not mention price.
+- "priority": one of "urgent" (active leak, safety or code issue, or damage that will get worse quickly), "recommended" (should be repaired soon), or "monitor" (not urgent; watch it or plan for it). Judge only from the notes.
 
 Also write:
 - "summary": a 2-4 sentence overview paragraph for the top of the report (what was inspected, how many issues, overall condition), professional and neutral.
 - "title": a short report title, e.g. "Plumbing Inspection Report – 123 Main St" (use the address or client if known).
 
 Return ONLY valid JSON in exactly this shape:
-{"title": "...", "summary": "...", "issues": [{"id": "...", "title": "...", "finding": "...", "recommendation": "..."}]}`,
+{"title": "...", "summary": "...", "issues": [{"id": "...", "title": "...", "finding": "...", "recommendation": "...", "priority": "urgent|recommended|monitor"}]}`,
         maxTokens: 3500,
         json: true,
       });
