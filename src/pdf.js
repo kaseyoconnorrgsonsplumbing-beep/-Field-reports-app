@@ -114,6 +114,18 @@ export async function buildReportPdf(report, photos) {
     y += 4;
   }
 
+  // Global photo numbering (Photo 1, Photo 2, ...) shared by the sections and the appendix
+  const photoIndex = new Map();
+  const photoOrder = [];
+  issues.forEach((it, n) => {
+    (it.photoIds || []).forEach((id) => {
+      if (photos[id]?.annotated || photos[id]?.original) {
+        photoIndex.set(id, photoOrder.length + 1);
+        photoOrder.push({ id, issueNo: n + 1, issueTitle: it.title || it.location || 'Issue' });
+      }
+    });
+  });
+
   for (let n = 0; n < issues.length; n++) {
     const it = issues[n];
     const heading = `${n + 1}.  ${it.title || it.location || 'Issue'}`;
@@ -134,32 +146,46 @@ export async function buildReportPdf(report, photos) {
       text(`Location: ${it.location}`, { size: 9.5, color: GRAY, gap: 6 });
     }
 
-    // photos, two per row
+    // photos: landscape shots get the full column width; portrait shots pair up
     const ids = (it.photoIds || []).filter((id) => photos[id]?.annotated || photos[id]?.original);
     if (ids.length) {
       const gutter = 10;
-      const cellW = (W - gutter) / 2;
-      const maxH = 190;
-      for (let i = 0; i < ids.length; i += 2) {
-        const pair = ids.slice(i, i + 2);
-        const imgs = await Promise.all(pair.map((id) => loadImage(photos[id].annotated || photos[id].original)));
-        const dims = imgs.map((im) => {
-          const s = Math.min(cellW / im.width, maxH / im.height);
-          return { w: im.width * s, h: im.height * s };
+      const halfW = (W - gutter) / 2;
+      const imgs = {};
+      for (const id of ids) imgs[id] = await loadImage(photos[id].annotated || photos[id].original);
+      let i = 0;
+      while (i < ids.length) {
+        const a = imgs[ids[i]];
+        const aPortrait = a.height > a.width;
+        const b = i + 1 < ids.length ? imgs[ids[i + 1]] : null;
+        const pairUp = aPortrait && b && b.height > b.width;
+        const row = pairUp ? [ids[i], ids[i + 1]] : [ids[i]];
+        const cellW = pairUp ? halfW : W;
+        const maxH = pairUp ? 360 : 330;
+        const dims = row.map((id) => {
+          const im = imgs[id];
+          const sc = Math.min(cellW / im.width, maxH / im.height);
+          return { w: im.width * sc, h: im.height * sc };
         });
         const rowHt = Math.max(...dims.map((d) => d.h));
-        ensure(rowHt + 8);
-        pair.forEach((id, j) => {
+        ensure(rowHt + 10);
+        row.forEach((id, j) => {
           const d = dims[j];
-          const x = LEFT + j * (cellW + gutter) + (cellW - d.w) / 2;
+          const x = LEFT + j * (halfW + gutter) + (cellW - d.w) / 2;
           doc.addImage(photos[id].annotated || photos[id].original, 'JPEG', x, y, d.w, d.h, undefined, 'FAST');
           doc.setDrawColor(200, 204, 214);
           doc.setLineWidth(0.5);
           doc.rect(x, y, d.w, d.h);
+          // small tag so it can be matched to the appendix
+          const tag = `Photo ${photoIndex.get(id)}`;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(...GRAY);
+          doc.text(tag, x + d.w, y + d.h + 9, { align: 'right' });
         });
-        y += rowHt + 8;
+        y += rowHt + 16;
+        i += row.length;
       }
-      y += 2;
     }
 
     if (it.finding) {
@@ -215,6 +241,34 @@ export async function buildReportPdf(report, photos) {
   if (report.closing) {
     label('NOTES & TERMS');
     text(report.closing, { size: 9.5, gap: 6 });
+  }
+
+  // ---------- Photo reference appendix: one full-size photo per page ----------
+  if (photoOrder.length) {
+    for (let k = 0; k < photoOrder.length; k++) {
+      const { id, issueNo, issueTitle } = photoOrder[k];
+      newPage();
+      if (k === 0) {
+        label('PHOTO REFERENCE');
+        text('Full-size copies of the marked-up photos from each issue, for closer review.', { size: 9.5, color: GRAY, gap: 8 });
+      }
+      const im = await loadImage(photos[id].annotated || photos[id].original);
+      const capH = 34;
+      const availH = BOTTOM - y - capH;
+      const sc = Math.min(W / im.width, availH / im.height);
+      const w = im.width * sc;
+      const h = im.height * sc;
+      const x = LEFT + (W - w) / 2;
+      doc.addImage(photos[id].annotated || photos[id].original, 'JPEG', x, y, w, h, undefined, 'FAST');
+      doc.setDrawColor(200, 204, 214);
+      doc.setLineWidth(0.5);
+      doc.rect(x, y, w, h);
+      y += h + 14;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10.5);
+      doc.setTextColor(...NAVY);
+      doc.text(`Photo ${k + 1}  ·  Issue ${issueNo}: ${issueTitle}`, LEFT, y);
+    }
   }
 
   // page numbers
