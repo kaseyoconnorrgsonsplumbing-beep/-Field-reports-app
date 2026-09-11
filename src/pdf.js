@@ -1,5 +1,5 @@
 import { jsPDF } from 'jspdf';
-import { loadImage, money } from './imageUtils';
+import { loadImage, money, orderedIssues, priorityInfo } from './imageUtils';
 
 // US Letter, points. Content box sits below the letterhead header.
 const PAGE_W = 612;
@@ -65,6 +65,22 @@ export async function buildReportPdf(report, photos) {
 
   const label = (str) => text(str, { size: 9, bold: true, color: NAVY, gap: 1 });
 
+  const hexToRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  // small colored priority pill; returns its width (0 if no priority)
+  const badge = (key, x, yTop, size = 7) => {
+    const pr = priorityInfo(key);
+    if (!pr) return 0;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(size);
+    const w = doc.getTextWidth(pr.short) + 8;
+    const h = size + 5;
+    doc.setFillColor(...hexToRgb(pr.color));
+    doc.roundedRect(x, yTop, w, h, 2, 2, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.text(pr.short, x + 4, yTop + h - 3.5);
+    return w;
+  };
+
   // ---------- Title block ----------
   const title = report.title || 'Field Issue Report';
   text(title, { size: 17, bold: true, color: NAVY, gap: 6 });
@@ -124,7 +140,7 @@ export async function buildReportPdf(report, photos) {
 
   // ---------- Contents (cover page) ----------
   // Page numbers are filled in after layout, once we know where everything landed.
-  const issues = report.issues || [];
+  const issues = orderedIssues(report);
   const toc = []; // { y, page: filled later }
   const priced = issues.filter((it) => it.price !== '' && it.price != null && !isNaN(Number(it.price)));
   const hasPhotos = issues.some((it) => (it.photoIds || []).some((id) => photos[id]?.annotated || photos[id]?.original));
@@ -139,7 +155,7 @@ export async function buildReportPdf(report, photos) {
     doc.text('PRICE', RIGHT - 70, y + 9, { align: 'right' });
     doc.text('PAGE', RIGHT - 6, y + 9, { align: 'right' });
     y += 14;
-    const tocRow = (labelText, priceText, key, shade) => {
+    const tocRow = (labelText, priceText, key, shade, prio = '') => {
       ensure(16);
       if (shade) {
         doc.setFillColor(243, 245, 249);
@@ -148,18 +164,23 @@ export async function buildReportPdf(report, photos) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(10);
       doc.setTextColor(...BLACK);
-      doc.text(doc.splitTextToSize(labelText, W - 150)[0], LEFT + 6, y + 11);
+      const shown = doc.splitTextToSize(labelText, W - 220)[0];
+      doc.text(shown, LEFT + 6, y + 11);
       if (priceText) doc.text(priceText, RIGHT - 70, y + 11, { align: 'right' });
+      if (prio) badge(prio, LEFT + 6 + doc.getTextWidth(shown) + 8, y + 3); // last: it changes font + color
       toc.push({ key, y: y + 11 });
       y += 16;
     };
     issues.forEach((it, n) => {
       const price = it.price !== '' && it.price != null && !isNaN(Number(it.price)) ? money(it.price) : '';
-      tocRow(`${n + 1}.  ${it.title || it.location || 'Issue'}`, price, `issue${n}`, n % 2 === 0);
+      tocRow(`${n + 1}.  ${it.title || it.location || 'Issue'}`, price, `issue${n}`, n % 2 === 0, it.priority);
     });
     if (priced.length) tocRow('Pricing summary & terms', '', 'pricing', issues.length % 2 === 0);
     if (hasPhotos) tocRow('Photo reference (full-size photos)', '', 'photos', (issues.length + 1) % 2 === 0);
     y += 8;
+    if (report.sortByPriority !== false && issues.some((it) => it.priority)) {
+      text('Issues are listed in order of priority: Urgent items first, then Recommended, then items to Monitor.', { size: 9.5, color: GRAY, gap: 6 });
+    }
   }
   const pageOf = {}; // key -> page number
 
@@ -186,8 +207,12 @@ export async function buildReportPdf(report, photos) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12.5);
     doc.setTextColor(...NAVY);
-    doc.text(doc.splitTextToSize(heading, W - 120)[0], LEFT + 12, y + 13);
+    const shownHeading = doc.splitTextToSize(heading, W - 200)[0];
+    doc.text(shownHeading, LEFT + 12, y + 13);
+    badge(it.priority, LEFT + 12 + doc.getTextWidth(shownHeading) + 10, y + 3, 8);
     if (it.price !== '' && it.price != null && !isNaN(Number(it.price))) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12.5);
       doc.setTextColor(...RED);
       doc.text(money(it.price), RIGHT, y + 13, { align: 'right' });
     }
