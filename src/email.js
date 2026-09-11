@@ -11,8 +11,9 @@ const hasPrice = (it) => it.price !== '' && it.price != null && !isNaN(Number(it
 export function emailSubject(report) {
   const issues = orderedIssues(report);
   const urgent = issues.filter((i) => i.priority === 'urgent').length;
-  const where = report.address || report.clientName || '';
-  const base = report.title && !/report/i.test(where) ? report.title : `Plumbing Inspection Report${where ? ' – ' + where : ''}`;
+  // Always lead with the property address (client name as a fallback) — never the report title.
+  const where = (report.address || report.clientName || '').trim();
+  const base = `Plumbing Inspection Report${where ? ' – ' + where : ''}`;
   const counts = issues.length ? ` – ${issues.length} item${issues.length === 1 ? '' : 's'}${urgent ? `, ${urgent} urgent` : ''}` : '';
   return base + counts;
 }
